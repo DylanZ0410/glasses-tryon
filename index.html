@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>试镜台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 布局：左边是镜子（画面 + 3D 镜框叠加），右边是镜框抽屉；窄屏上下堆叠 */
+:root {
+  --bg: #eef0ed;
+  --panel: #fbfbfa;
+  --fg: #1c201e;
+  --muted: #646c67;
+  --line: #d6dbd7;
+  --accent: #23614f;
+  --accent-fg: #ffffff;
+  --mirror: #d3d8d4;
+  --ok: #1f7a4d;
+  --warn: #a2560f;
+  --ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --spec: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111413; --panel: #191d1b; --fg: #e6eae7; --muted: #959e99; --line: #2c322f;
+    --accent: #6cc5a8; --accent-fg: #0c1310; --mirror: #0b0d0c; --ok: #6fd39c; --warn: #f0a75a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111413; --panel: #191d1b; --fg: #e6eae7; --muted: #959e99; --line: #2c322f;
+  --accent: #6cc5a8; --accent-fg: #0c1310; --mirror: #0b0d0c; --ok: #6fd39c; --warn: #f0a75a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box }
+[hidden] { display: none !important }
+html, body { height: 100% }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--ui) }
+
+.app {
+  height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px;
+  padding-block: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+.stage { position: relative; min-height: 0; background: var(--mirror); border-radius: 16px; overflow: hidden; display: grid; place-items: center }
+.view { position: relative }
+.view.mirrored { transform: scaleX(-1) }
+.view > * { position: absolute; inset: 0; width: 100%; height: 100%; display: block }
+.overlay {
+  position: absolute; inset: 0; display: grid; place-content: center; padding: 24px; text-align: center;
+  background: color-mix(in srgb, var(--mirror) 82%, transparent);
+}
+.overlay p { margin: 0; max-width: 30ch; font-size: 15px }
+.fit {
+  position: absolute; top: 12px; left: 12px; margin: 0; padding: 5px 12px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--line); font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.fit b { font-weight: 600; color: var(--ok) }
+.fit[data-v="偏大"] b, .fit[data-v="偏小"] b { color: var(--warn) }
+.toolbar { position: absolute; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; padding-inline: 12px }
+
+button {
+  font: inherit; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--fg); cursor: pointer;
+}
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent) }
+button:disabled { opacity: .5; cursor: default }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+
+.panel {
+  display: flex; flex-direction: column; gap: 22px; min-height: 0; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px;
+}
+h1 { margin: 0; font-size: 20px; letter-spacing: .02em; text-wrap: balance }
+.lede { margin: 4px 0 0; color: var(--muted) }
+form { display: flex; flex-direction: column; gap: 18px }
+fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px }
+legend, .label { font-size: 12px; color: var(--muted); letter-spacing: .06em; padding: 0; margin-bottom: 8px }
+.chip { position: relative }
+.chip input { position: absolute; opacity: 0; pointer-events: none }
+.chip span {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: 999px; cursor: pointer; user-select: none;
+}
+.chip input:checked + span { background: var(--fg); color: var(--bg); border-color: var(--fg) }
+.chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px }
+.sw { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(128 128 128 / .4) }
+
+.size { display: grid; gap: 6px }
+.size input { width: 100%; accent-color: var(--accent) }
+.spec { font-family: var(--spec); font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums }
+.hint { margin: 0; font-size: 12px; color: var(--muted) }
+
+.shots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px }
+.shots button { padding: 0; overflow: hidden; display: grid; text-align: left; border-radius: 10px }
+.shots img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; display: block }
+.shots span { padding: 4px 6px; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+
+dialog { border: 0; padding: 0; border-radius: 14px; background: var(--panel); color: var(--fg); max-width: min(92vw, 960px) }
+dialog img { display: block; max-width: 100%; max-height: 78vh }
+dialog form { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px }
+dialog::backdrop { background: rgb(0 0 0 / .6) }
+
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; height: auto }
+  .stage { height: 64svh }
+  .panel { overflow: visible }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <main class="stage" id="stage">
+    <div class="view" id="view">
+      <video id="video" playsinline muted hidden></video>
+      <img id="photo" alt="试戴画面" crossorigin="anonymous" hidden>
+      <canvas id="gl"></canvas>
+    </div>
+    <div class="overlay" id="overlay"><p id="status">正在加载人脸模型…</p></div>
+    <p class="fit" id="fit" hidden></p>
+    <div class="toolbar">
+      <button class="primary" id="camBtn" disabled>打开摄像头</button>
+      <button id="photoBtn" disabled>上传照片</button>
+      <button id="snapBtn" disabled>拍照对比</button>
+    </div>
+  </main>
+
+  <aside class="panel">
+    <header>
+      <h1>试镜台</h1>
+      <p class="lede">实时 3D 试戴。人脸识别在浏览器本地运行，画面不会上传。</p>
+    </header>
+
+    <form id="opts">
+      <fieldset>
+        <legend>镜框</legend>
+        <label class="chip"><input type="radio" name="style" value="round"><span>圆框</span></label>
+        <label class="chip"><input type="radio" name="style" value="square" checked><span>方框</span></label>
+        <label class="chip"><input type="radio" name="style" value="cateye"><span>猫眼</span></label>
+        <label class="chip"><input type="radio" name="style" value="aviator"><span>飞行员</span></label>
+      </fieldset>
+      <fieldset>
+        <legend>颜色</legend>
+        <label class="chip"><input type="radio" name="color" value="black"><span><i class="sw" style="background:#141414"></i>亮黑</span></label>
+        <label class="chip"><input type="radio" name="color" value="tortoise" checked><span><i class="sw" style="background:radial-gradient(circle at 30% 35%,#c58a3e 0 18%,transparent 30%),radial-gradient(circle at 70% 70%,#9a5a22 0 20%,transparent 34%),#3a1d0b"></i>玳瑁</span></label>
+        <label class="chip"><input type="radio" name="color" value="gold"><span><i class="sw" style="background:linear-gradient(135deg,#f3dca0,#b8914a)"></i>金属金</span></label>
+        <label class="chip"><input type="radio" name="color" value="silver"><span><i class="sw" style="background:linear-gradient(135deg,#f2f4f6,#9aa1a8)"></i>金属银</span></label>
+      </fieldset>
+      <fieldset>
+        <legend>镜片</legend>
+        <label class="chip"><input type="radio" name="lens" value="clear" checked><span>透明</span></label>
+        <label class="chip"><input type="radio" name="lens" value="tea"><span>茶色</span></label>
+        <label class="chip"><input type="radio" name="lens" value="dark"><span>墨镜</span></label>
+      </fieldset>
+      <div class="size">
+        <label class="label" for="size">尺寸</label>
+        <output class="spec" id="spec" for="size">52□18-140</output>
+        <input type="range" id="size" name="size" min="0.88" max="1.12" step="0.02" value="1">
+        <p class="hint">镜片宽□鼻梁宽-镜腿长，单位 mm，就是印在镜腿内侧的那串数字。</p>
+      </div>
+    </form>
+
+    <section>
+      <div class="label">拍照对比</div>
+      <p class="hint" id="shotsHint">近视的话摘了眼镜看不清屏幕：多拍几款，戴回眼镜再来这里并排比较。</p>
+      <div class="shots" id="shots"></div>
+    </section>
+  </aside>
+</div>
+
+<dialog id="dlg">
+  <img id="dlgImg" alt="">
+  <form method="dialog"><span id="dlgLabel"></span><button>关闭</button></form>
+</dialog>
+<input type="file" id="file" accept="image/*" hidden>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+
+const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
+const MODEL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+const SAMPLE = 'https://storage.googleapis.com/mediapipe-assets/business-person.png';
+// 两眼外眼角的成人平均距离，用它把像素换成毫米。
+// ponytail: 绝对尺寸靠平均值假设，误差约 ±5%；要量准得加银行卡标定或深度摄像头
+const EYE_SPAN_MM = 90;
+
+const $ = id => document.getElementById(id);
+const video = $('video'), photo = $('photo'), view = $('view'), overlay = $('overlay'), fitEl = $('fit');
+
+// a/b 镜片半宽半高，n 超椭圆指数（2 是圆，越大越方），bridge 鼻梁宽，单位 mm
+const STYLES = {
+  round:   { name: '圆框',   a: 24,   b: 23, n: 2,   bridge: 20 },
+  square:  { name: '方框',   a: 26,   b: 19, n: 4,   bridge: 18 },
+  cateye:  { name: '猫眼',   a: 27,   b: 19, n: 3,   bridge: 17, lift: 14 },
+  aviator: { name: '飞行员', a: 28.5, b: 22, n: 2.4, bridge: 15, drop: 0.35, topBar: true },
+};
+const COLORS = {
+  black:    { name: '亮黑',   color: 0x121212 },
+  tortoise: { name: '玳瑁',   color: 0xffffff, tortoise: true },
+  gold:     { name: '金属金', color: 0xd9b46c, metal: true },
+  silver:   { name: '金属银', color: 0xd0d4d8, metal: true },
+};
+const LENSES = {
+  clear: { name: '透明', color: 0xdde8ee, opacity: 0.1 },
+  tea:   { name: '茶色', color: 0x6e4220, opacity: 0.55 },
+  dark:  { name: '墨镜', color: 0x16191c, opacity: 0.86 },
+};
+
+// —— 3D 场景：正交相机直接用画面像素做坐标 ——
+const renderer = new THREE.WebGLRenderer({ canvas: $('gl'), alpha: true, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(0.3, 1, 1);
+scene.add(sun);
+const camera = new THREE.OrthographicCamera(0, 1, 0, -1, -1e4, 1e4);
+
+const rig = new THREE.Group();      // 跟着头动，单位 mm
+const glasses = new THREE.Group();
+glasses.position.set(0, -2, 20);    // 镜片中心略低于眼睛，镜框在眼睛前方约 2cm
+// 看不见的“头”，只写深度。故意比真头宽一圈：镜腿过了太阳穴就该藏进头发和耳朵后面
+const head = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 24), new THREE.MeshBasicMaterial({ colorWrite: false }));
+head.scale.set(85, 105, 74);
+head.position.set(0, 15, -62);
+head.renderOrder = -1;
+rig.add(glasses, head);
+rig.visible = false;
+scene.add(rig);
+
+function tortoiseTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#3a1d0b';
+  g.fillRect(0, 0, 256, 256);
+  g.filter = 'blur(5px)';
+  g.globalAlpha = 0.7;
+  const tones = ['#6b3a14', '#9a5a22', '#c58a3e', '#24110a'];
+  for (let i = 0; i < 70; i++) {
+    g.fillStyle = tones[i % 4];
+    g.beginPath();
+    g.ellipse(Math.random() * 256, Math.random() * 256, 6 + Math.random() * 22, 4 + Math.random() * 12, Math.random() * 3, 0, 7);
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const TORTOISE = tortoiseTexture();
+const tortoise = (u, v) => { const t = TORTOISE.clone(); t.repeat.set(u, v); t.needsUpdate = true; return t; };
+
+// 右侧镜片轮廓（逆时针），鼻侧在 -x
+function lensOutline(s) {
+  const pts = [];
+  for (let i = 0; i < 72; i++) {
+    const t = i / 72 * Math.PI * 2, c = Math.cos(t), si = Math.sin(t);
+    const x = s.a * Math.sign(c) * Math.abs(c) ** (2 / s.n);
+    let y = s.b * Math.sign(si) * Math.abs(si) ** (2 / s.n);
+    if (s.lift && y > 0) y += s.lift * Math.max(0, x / s.a) ** 2 * (y / s.b);  // 猫眼：外上角上挑
+    if (s.drop && y < 0) y *= 1 + s.drop * (1 - x / s.a) / 2;                  // 飞行员：鼻侧下坠
+    pts.push(new THREE.Vector2(x, y));
+  }
+  return pts;
+}
+// 沿外法线把轮廓外扩 d，得到镜圈外沿
+const offset = (pts, d) => pts.map((p, i) => {
+  const t = pts[(i + 1) % pts.length].clone().sub(pts[(i + pts.length - 1) % pts.length]).normalize();
+  return new THREE.Vector2(p.x + t.y * d, p.y - t.x * d);
+});
+
+let frameMM = 0, choice = {};
+function build() {
+  choice = Object.fromEntries(new FormData($('opts')));
+  const s = STYLES[choice.style], col = COLORS[choice.color], lens = LENSES[choice.lens], k = +choice.size;
+  glasses.traverse(o => { o.geometry?.dispose(); o.material?.map?.dispose(); o.material?.dispose(); });
+  glasses.clear();
+
+  const thick = col.metal ? 1.3 : 3.6;   // 金属细边，板材粗边
+  const props = col.metal
+    ? { color: col.color, metalness: 1, roughness: 0.28 }
+    : { color: col.color, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 0.45 };
+  const rimMat = new THREE.MeshPhysicalMaterial({ ...props, map: col.tortoise ? tortoise(1 / 30, 1 / 30) : null });
+  const barMat = new THREE.MeshPhysicalMaterial({ ...props, map: col.tortoise ? tortoise(6, 1) : null });
+  const lensMat = new THREE.MeshPhysicalMaterial({
+    color: lens.color, transparent: true, opacity: lens.opacity, roughness: 0.05,
+    depthWrite: false, side: THREE.DoubleSide,
+  });
+
+  const inner = lensOutline(s);
+  const ring = new THREE.Shape(offset(inner, thick));
+  ring.holes.push(new THREE.Path(inner));
+  const depth = col.metal ? 1.2 : 4;
+  const ringGeo = new THREE.ExtrudeGeometry(ring, { depth, bevelThickness: 0.5, bevelSize: 0.4, bevelSegments: 2 });
+  ringGeo.translate(0, 0, -depth / 2);
+  const lensGeo = new THREE.ShapeGeometry(new THREE.Shape(inner));
+  const cx = s.bridge / 2 + s.a;
+  const tube = (pts, r) => new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), 48, r, 8), barMat);
+
+  for (const side of [1, -1]) {
+    const eye = new THREE.Group();
+    eye.position.x = side * cx;
+    eye.scale.x = side;               // 左边镜片是右边的镜像
+    eye.add(new THREE.Mesh(ringGeo, rimMat), new THREE.Mesh(lensGeo, lensMat));
+    glasses.add(eye);
+    // 镜腿：从铰链往后走，过了耳朵往下弯
+    const hx = side * (cx + s.a + thick / 2), hy = s.b * 0.5;
+    glasses.add(tube([[hx, hy, 0], [hx + side * 3, hy, -25], [hx + side * 5, hy - 3, -95], [hx + side * 3, hy - 22, -118]], col.metal ? 0.8 : 1.6));
+  }
+  const yb = s.b * 0.35, bx = s.bridge / 2 + thick / 2;
+  glasses.add(tube([[-bx, yb, 0], [0, yb + 5, 2], [bx, yb, 0]], col.metal ? 0.9 : thick * 0.6));
+  if (s.topBar) {
+    const tx = cx - s.a * 0.5, ty = s.b * 0.92 + thick / 2;
+    glasses.add(tube([[-tx, ty, 0], [0, ty - 0.5, 1], [tx, ty, 0]], 0.8));
+  }
+
+  glasses.scale.setScalar(k);
+  frameMM = 2 * (cx + s.a + thick) * k;
+  $('spec').value = `${Math.round(2 * s.a * k)}□${Math.round(s.bridge * k)}-140`;
+  updateFit();
+}
+$('opts').addEventListener('input', build);
+
+// —— 画面尺寸：把 view 等比塞进舞台，canvas 跟着走 ——
+let source = null, srcW = 4, srcH = 3;
+function layout() {
+  const r = $('stage').getBoundingClientRect();
+  const k = Math.min(r.width / srcW, r.height / srcH);
+  const w = Math.round(srcW * k), h = Math.round(srcH * k);
+  view.style.width = w + 'px';
+  view.style.height = h + 'px';
+  renderer.setSize(w, h, false);
+  camera.right = srcW;
+  camera.bottom = -srcH;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(layout).observe($('stage'));
+
+// —— 人脸关键点 → 位置、朝向、尺度 ——
+const P = (lm, i) => new THREE.Vector3(lm[i].x * srcW, -lm[i].y * srcH, -lm[i].z * srcW);
+const basis = new THREE.Matrix4(), q = new THREE.Quaternion(), v3 = new THREE.Vector3();
+let faceMM = 0;
+function track(lm, smooth) {
+  const x = P(lm, 263).sub(P(lm, 33));              // 外眼角连线：左右方向 + 尺度
+  const pxPerMM = x.length() / EYE_SPAN_MM;
+  x.normalize();
+  const y = P(lm, 10).sub(P(lm, 152));              // 额头减下巴：上方向
+  y.addScaledVector(x, -y.dot(x)).normalize();
+  q.setFromRotationMatrix(basis.makeBasis(x, y, v3.crossVectors(x, y)));
+  const pos = [33, 133, 362, 263].reduce((sum, i) => sum.add(P(lm, i)), new THREE.Vector3()).multiplyScalar(0.25);
+  const face = P(lm, 127).distanceTo(P(lm, 356)) / pxPerMM;
+
+  if (!smooth || !rig.visible) {
+    rig.position.copy(pos);
+    rig.quaternion.copy(q);
+    rig.scale.setScalar(pxPerMM);
+    faceMM = face;
+  } else {
+    rig.position.lerp(pos, 0.5);
+    rig.quaternion.slerp(q, 0.5);
+    rig.scale.lerp(v3.setScalar(pxPerMM), 0.5);
+    faceMM += (face - faceMM) * 0.1;
+  }
+  rig.visible = true;
+}
+
+function updateFit() {
+  if (!rig.visible) { fitEl.hidden = true; return; }
+  const r = frameMM / faceMM;
+  const verdict = r > 0.98 ? '偏大' : r < 0.86 ? '偏小' : '合适';
+  fitEl.innerHTML = `脸宽约 ${Math.round(faceMM)} mm · 镜框 ${Math.round(frameMM)} mm · <b>${verdict}</b>`;
+  fitEl.dataset.v = verdict;
+  fitEl.hidden = false;
+}
+
+// —— 画面来源：摄像头 / 照片 ——
+let landmarker = null, lastTime = -1;
+const say = msg => { $('status').textContent = msg; overlay.hidden = false; };
+
+function useSource(el, w, h, mirrored) {
+  source = el; srcW = w; srcH = h;
+  video.hidden = el !== video;
+  photo.hidden = el !== photo;
+  view.classList.toggle('mirrored', mirrored);
+  overlay.hidden = true;
+  rig.visible = false;
+  $('snapBtn').disabled = false;
+  layout();
+}
+function stopCamera() {
+  video.srcObject?.getTracks().forEach(t => t.stop());
+  video.srcObject = null;
+}
+
+async function showPhoto(url) {
+  stopCamera();
+  photo.src = url;
+  await photo.decode();
+  await landmarker.setOptions({ runningMode: 'IMAGE' });
+  useSource(photo, photo.naturalWidth, photo.naturalHeight, false);
+  const face = landmarker.detect(photo).faceLandmarks[0];
+  if (face) track(face, false);
+  else say('这张照片里没找到人脸，换一张正脸、光线均匀的照片试试。');
+  updateFit();
+}
+
+$('camBtn').onclick = async () => {
+  try {
+    video.srcObject = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+    });
+    await video.play();
+    await landmarker.setOptions({ runningMode: 'VIDEO' });
+    useSource(video, video.videoWidth, video.videoHeight, true);
+  } catch (err) {
+    stopCamera();
+    say(`摄像头没打开（${err.name}）。检查浏览器的摄像头权限，或者点「上传照片」用正脸照来试。`);
+  }
+};
+$('photoBtn').onclick = () => $('file').click();
+$('file').onchange = e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (file) showPhoto(URL.createObjectURL(file)).catch(() => say('这张图片打不开，换一张 JPG 或 PNG。'));
+};
+
+// —— 拍照对比：把画面和镜框合成一张，放进右边的小相册 ——
+$('snapBtn').onclick = () => {
+  const c = document.createElement('canvas');
+  c.width = srcW; c.height = srcH;
+  const g = c.getContext('2d');
+  if (view.classList.contains('mirrored')) { g.translate(srcW, 0); g.scale(-1, 1); }
+  g.drawImage(source, 0, 0, srcW, srcH);
+  renderer.render(scene, camera);
+  g.drawImage(renderer.domElement, 0, 0, srcW, srcH);
+  const label = `${STYLES[choice.style].name} · ${COLORS[choice.color].name} · ${LENSES[choice.lens].name} · ${$('spec').value}`;
+  c.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const btn = document.createElement('button');
+    btn.innerHTML = `<img alt=""><span></span>`;
+    btn.querySelector('img').src = url;
+    btn.querySelector('span').textContent = label;
+    btn.onclick = () => { $('dlgImg').src = url; $('dlgLabel').textContent = label; $('dlg').showModal(); };
+    $('shots').prepend(btn);
+    $('shotsHint').hidden = true;
+    while ($('shots').children.length > 6) {
+      URL.revokeObjectURL($('shots').lastChild.querySelector('img').src);
+      $('shots').lastChild.remove();
+    }
+  }, 'image/jpeg', 0.9);
+};
+
+function loop() {
+  requestAnimationFrame(loop);
+  if (source === video && video.readyState >= 2 && video.currentTime !== lastTime) {
+    lastTime = video.currentTime;
+    const face = landmarker.detectForVideo(video, performance.now()).faceLandmarks[0];
+    if (face) track(face, true);
+    else rig.visible = false;
+    updateFit();
+  }
+  renderer.render(scene, camera);
+}
+
+async function init() {
+  const fileset = await FilesetResolver.forVisionTasks(MP);
+  const opts = delegate => ({ baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: 'IMAGE', numFaces: 1 });
+  try { landmarker = await FaceLandmarker.createFromOptions(fileset, opts('GPU')); }
+  catch { landmarker = await FaceLandmarker.createFromOptions(fileset, opts('CPU')); }
+  $('camBtn').disabled = $('photoBtn').disabled = false;
+  loop();
+  // 先用 MediaPipe 的示例人像打开，页面一加载就能看到效果
+  await showPhoto(SAMPLE).catch(() => say('点「打开摄像头」开始试戴，或者上传一张正脸照。'));
+}
+
+build();
+init().catch(err => say(`人脸模型没加载成功（${err.message}）。检查网络后刷新页面。`));
+</script>
+</body>
+</html>
